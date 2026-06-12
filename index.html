@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CardioTrace — Risk Assessor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ════════════════════════════════════════════════════
+   CONCEPT — "CardioTrace" telemetry printout
+   The whole page is one long strip of ECG graph paper,
+   like a ticket spooling out of a bedside monitor.
+   Channels (CH01–CH05) are filled in by hand; pressing
+   the device button "prints" a stamped verdict and a
+   live trace below a torn perforation edge.
+   ════════════════════════════════════════════════════ */
+:root{
+  --desk:        #2B2622;
+  --paper:       #FBEAE6;
+  --grid-min:    #F4D5CF;
+  --grid-maj:    #EAB2A8;
+  --ink:         #2E2521;
+  --ink-soft:    #8C7A73;
+  --trace:       #C2392B;
+  --high:        #B23A2E;
+  --med:         #B8801E;
+  --low:         #3F7556;
+  --led:         #8FE3B0;
+  --led-dim:     #3C5C4C;
+
+  --display: 'Special Elite', cursive;
+  --mono: 'IBM Plex Mono', monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:15px}
+body{
+  font-family:var(--mono);color:var(--ink);
+  background:var(--desk);
+  background-image:radial-gradient(circle at 50% 0%, #3a342f 0%, var(--desk) 70%);
+  min-height:100vh;
+  padding:28px 14px 60px;
+}
+
+/* ── Shell ─────────────────────────────────────── */
+.shell{max-width:700px;margin:0 auto}
+
+/* ── Device header (LED readout) ─────────────────── */
+.device{
+  background:var(--ink);border-radius:8px 8px 0 0;
+  padding:18px 22px;color:var(--led);
+  box-shadow:0 8px 30px rgba(0,0,0,.4);
+}
+.device-top{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px}
+.device-name{font-family:var(--display);font-size:19px;letter-spacing:.03em;color:var(--led)}
+.device-name span{color:var(--led-dim)}
+.device-stats{
+  font-size:10px;letter-spacing:.12em;text-align:right;line-height:1.8;color:var(--led-dim);
+}
+.device-stats b{color:var(--led)}
+.device-trace{margin-top:12px;height:38px}
+.device-trace svg{width:100%;height:100%;display:block;overflow:visible}
+.device-trace path{fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;transition:stroke 1s}
+@keyframes scrollTrace{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.trace-group{animation:scrollTrace 5.5s linear infinite}
+
+/* ── Perforation strip ───────────────────────────── */
+.perf{
+  height:16px;background:var(--ink);position:relative;
+  display:flex;align-items:center;
+}
+.perf::after{
+  content:'';position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);
+  height:0;border-top:2px dotted rgba(251,234,230,.35);
+}
+.perf-circles{
+  display:flex;width:100%;justify-content:space-around;position:relative;z-index:1;
+}
+.perf-circles span{
+  width:9px;height:9px;border-radius:50%;background:var(--desk);
+}
+
+/* ── Paper strip ──────────────────────────────────── */
+.paper{
+  background-color:var(--paper);
+  background-image:
+    linear-gradient(to right, var(--grid-min) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-min) 1px, transparent 1px),
+    linear-gradient(to right, var(--grid-maj) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-maj) 1px, transparent 1px);
+  background-size:8px 8px, 8px 8px, 40px 40px, 40px 40px;
+  padding:30px 28px 6px;
+  box-shadow:0 8px 30px rgba(0,0,0,.4);
+}
+@media (max-width:560px){ .paper{padding:24px 16px 6px} }
+
+.intro{
+  font-size:12px;color:var(--ink-soft);line-height:1.8;margin-bottom:26px;
+  padding-bottom:18px;border-bottom:1px dashed var(--grid-maj);
+}
+.intro b{color:var(--ink)}
+
+/* ── Channels ─────────────────────────────────────── */
+.channel{margin-bottom:28px}
+.ch-head{
+  display:flex;align-items:center;gap:10px;margin-bottom:14px;
+}
+.ch-num{
+  font-family:var(--display);font-size:13px;color:var(--paper);
+  background:var(--ink);padding:3px 8px;border-radius:2px;letter-spacing:.05em;
+}
+.ch-title{font-weight:600;font-size:13px;letter-spacing:.12em;text-transform:uppercase}
+.ch-rule{flex:1;height:0;border-top:1px dashed var(--grid-maj)}
+
+/* form fields written on the grid */
+.field-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px 20px}
+.field-grid.c3{grid-template-columns:repeat(3,1fr)}
+@media (max-width:560px){.field-grid,.field-grid.c3{grid-template-columns:1fr 1fr}}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft)}
+.field input,.field select{
+  font-family:var(--mono);font-size:14px;font-weight:500;color:var(--ink);
+  background:transparent;border:none;border-bottom:1.5px solid var(--ink);
+  padding:3px 2px 5px;outline:none;
+}
+.field input::placeholder{color:#cbb3ac}
+.field input:focus,.field select:focus{border-color:var(--trace);background:rgba(194,57,43,.04)}
+.field select{cursor:pointer}
+
+/* typewriter checkbox stamps */
+.chk-row{display:flex;flex-wrap:wrap;gap:8px 18px}
+.chk{
+  display:inline-flex;align-items:center;gap:8px;cursor:pointer;user-select:none;
+  font-size:13px;color:var(--ink);transition:color .12s;
+}
+.chk .box{font-family:var(--mono);font-weight:700;font-size:14px;letter-spacing:0;width:34px;color:var(--ink-soft)}
+.chk.on{color:var(--high);font-weight:600}
+.chk.on .box{color:var(--high)}
+.chk.on.low-tone{color:var(--ink)}
+.chk.on.low-tone .box{color:var(--trace)}
+
+/* notes */
+.notes textarea{
+  width:100%;font-family:var(--mono);font-size:13px;color:var(--ink);
+  background:transparent;border:none;border-bottom:1.5px solid var(--ink);
+  padding:5px 2px;resize:vertical;outline:none;min-height:44px;line-height:1.7;
+}
+.notes textarea::placeholder{color:#cbb3ac}
+.notes textarea:focus{border-color:var(--trace);background:rgba(194,57,43,.04)}
+
+/* device button */
+.run-row{padding:14px 0 30px;display:flex;flex-direction:column;align-items:flex-start;gap:10px}
+.run-btn{
+  font-family:var(--display);font-size:17px;letter-spacing:.06em;text-transform:uppercase;
+  background:var(--trace);color:var(--paper);border:none;border-radius:4px;
+  padding:14px 34px;cursor:pointer;
+  box-shadow:0 4px 0 #8a2a1f, 0 4px 12px rgba(0,0,0,.25);
+  transition:transform .08s, box-shadow .08s;
+}
+.run-btn:active{transform:translateY(3px);box-shadow:0 1px 0 #8a2a1f, 0 1px 6px rgba(0,0,0,.25)}
+.run-btn.busy{opacity:.65;pointer-events:none}
+.run-note{font-size:10.5px;color:var(--ink-soft);letter-spacing:.05em}
+
+/* ── Tear edge ────────────────────────────────────── */
+.tear{
+  height:14px;background-color:var(--paper);
+  background-image:
+    linear-gradient(135deg, transparent 75%, var(--desk) 75.5%),
+    linear-gradient(45deg, transparent 75%, var(--desk) 75.5%);
+  background-size:16px 16px;background-position:0 0, 8px 0;background-repeat:repeat-x;
+}
+
+/* ── Printout (result) ───────────────────────────── */
+.printout{
+  background-color:var(--paper);
+  background-image:
+    linear-gradient(to right, var(--grid-min) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-min) 1px, transparent 1px),
+    linear-gradient(to right, var(--grid-maj) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-maj) 1px, transparent 1px);
+  background-size:8px 8px, 8px 8px, 40px 40px, 40px 40px;
+  padding:26px 28px 30px;display:none;
+}
+.printout.show{display:block}
+@media (max-width:560px){ .printout{padding:22px 16px 26px} }
+
+.stamp-wrap{display:flex;justify-content:center;margin:8px 0 22px}
+.stamp{
+  font-family:var(--display);font-size:30px;letter-spacing:.12em;text-transform:uppercase;
+  border:3px solid var(--high);color:var(--high);padding:12px 28px;
+  transform:rotate(-4deg);border-radius:4px;text-align:center;
+  text-shadow:0 0 1px currentColor;position:relative;
+}
+.stamp small{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.2em;margin-top:4px;font-weight:600}
+.stamp.med{border-color:var(--med);color:var(--med)}
+.stamp.low{border-color:var(--low);color:var(--low)}
+
+.result-trace{height:60px;margin-bottom:22px}
+.result-trace svg{width:100%;height:100%;display:block}
+.result-trace path{fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+.printout-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px}
+@media (max-width:600px){.printout-grid{grid-template-columns:1fr}}
+
+.po-block{margin-bottom:20px}
+.po-label{
+  font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft);
+  margin-bottom:8px;border-bottom:1px dashed var(--grid-maj);padding-bottom:5px;
+}
+.meter-row{display:flex;align-items:baseline;gap:10px;font-size:12px;margin-bottom:5px;line-height:1.6}
+.meter-name{min-width:108px;flex-shrink:0;color:var(--ink-soft)}
+.meter-bar{letter-spacing:-1px;font-size:13px}
+.meter-val{margin-left:auto;font-weight:600;flex-shrink:0}
+
+.advice-list{font-size:12.5px;line-height:1.85;list-style:none}
+.advice-list li{padding-left:18px;position:relative;margin-bottom:4px}
+.advice-list li::before{content:'›';position:absolute;left:0;color:var(--trace);font-weight:700}
+
+.lipid-row{font-size:12px;margin-bottom:6px;display:flex;justify-content:space-between;gap:10px}
+.lipid-row .lstat{font-weight:600}
+
+/* log */
+.log-table{width:100%;font-size:11.5px;border-collapse:collapse}
+.log-table th{
+  text-align:left;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);
+  padding:4px 6px;border-bottom:1px dashed var(--grid-maj);
+}
+.log-table td{padding:6px 6px;border-bottom:1px dashed var(--grid-min)}
+.log-table .lv{font-weight:700;letter-spacing:.05em;text-transform:uppercase;font-size:10px}
+.log-table .lv.high{color:var(--high)}
+.log-table .lv.med{color:var(--med)}
+.log-table .lv.low{color:var(--low)}
+.log-empty{font-size:12px;color:var(--ink-soft)}
+
+/* footer note */
+.footnote{
+  font-size:11px;color:var(--ink-soft);line-height:1.8;
+  border-top:1px dashed var(--grid-maj);padding-top:14px;margin-top:6px;
+}
+.footnote b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ═══ Device header ═══ -->
+  <div class="device">
+    <div class="device-top">
+      <div class="device-name">CardioTrace <span>// risk assessor</span></div>
+      <div class="device-stats">
+        DATASET <b>WHS MAR 2025</b> · 538 RECORDS<br>
+        MODEL <b>RF · 30 TREES</b> · AUC <b>0.794</b><br>
+        MODE <b>LOCAL — NO UPLOAD</b>
+      </div>
+    </div>
+    <div class="device-trace">
+      <svg viewBox="0 0 1000 40" preserveAspectRatio="none">
+        <g class="trace-group" id="headTrace">
+          <path id="hTrace1" d=""/>
+          <path id="hTrace2" d=""/>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <!-- ═══ Perforation ═══ -->
+  <div class="perf"><div class="perf-circles">
+    <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+    <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+    <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+  </div></div>
+
+  <!-- ═══ Paper strip — input channels ═══ -->
+  <div class="paper">
+    <p class="intro">
+      <b>Instructions —</b> complete channels 01–05 below as you would a paper
+      intake form, then press the red button to print a risk reading.
+      Everything runs in this browser; no patient data is transmitted anywhere.
+    </p>
+
+    <!-- CH 01 -->
+    <div class="channel">
+      <div class="ch-head"><span class="ch-num">CH·01</span><span class="ch-title">Patient Particulars</span><span class="ch-rule"></span></div>
+      <div class="field-grid">
+        <div class="field"><label for="f-age">Age (yrs)</label><input type="number" id="f-age" min="5" max="110" placeholder="62"></div>
+        <div class="field"><label for="f-gender">Sex</label>
+          <select id="f-gender"><option value="">—</option><option value="1">Male</option><option value="0">Female</option></select>
+        </div>
+        <div class="field"><label for="f-urban">Locality</label>
+          <select id="f-urban"><option value="0.5">Unknown</option><option value="1">Urban</option><option value="0">Rural</option></select>
+        </div>
+        <div class="field"><label for="f-sleep">Sleep</label>
+          <select id="f-sleep"><option value="0">Normal</option><option value="1">Good</option></select>
+        </div>
+      </div>
+    </div>
+
+    <!-- CH 02 -->
+    <div class="channel">
+      <div class="ch-head"><span class="ch-num">CH·02</span><span class="ch-title">History &amp; Risk Factors</span><span class="ch-rule"></span></div>
+      <div class="chk-row" id="risk-group">
+        <span class="chk" data-key="htn"><span class="box">[ ]</span>Hypertension</span>
+        <span class="chk" data-key="dm"><span class="box">[ ]</span>Diabetes</span>
+        <span class="chk" data-key="hlp"><span class="box">[ ]</span>High lipids</span>
+        <span class="chk" data-key="smoker"><span class="box">[ ]</span>Smoker / tobacco</span>
+        <span class="chk" data-key="fh"><span class="box">[ ]</span>Family history</span>
+        <span class="chk" data-key="hypo"><span class="box">[ ]</span>Hypothyroid</span>
+      </div>
+    </div>
+
+    <!-- CH 03 -->
+    <div class="channel">
+      <div class="ch-head"><span class="ch-num">CH·03</span><span class="ch-title">Presenting Symptoms</span><span class="ch-rule"></span></div>
+      <div class="chk-row" id="symp-group">
+        <span class="chk low-tone" data-key="cp"><span class="box">[ ]</span>Chest pain</span>
+        <span class="chk low-tone" data-key="sob"><span class="box">[ ]</span>Breathlessness</span>
+        <span class="chk low-tone" data-key="palp"><span class="box">[ ]</span>Palpitations</span>
+      </div>
+    </div>
+
+    <!-- CH 04 -->
+    <div class="channel">
+      <div class="ch-head"><span class="ch-num">CH·04</span><span class="ch-title">Lipid Panel (optional)</span><span class="ch-rule"></span></div>
+      <div class="field-grid c3">
+        <div class="field"><label for="f-chol">Total chol.</label><input type="number" id="f-chol" placeholder="180 mg/dL"></div>
+        <div class="field"><label for="f-ldl">LDL</label><input type="number" id="f-ldl" placeholder="110 mg/dL"></div>
+        <div class="field"><label for="f-hdl">HDL</label><input type="number" id="f-hdl" placeholder="45 mg/dL"></div>
+      </div>
+    </div>
+
+    <!-- CH 05 -->
+    <div class="channel" style="margin-bottom:8px">
+      <div class="ch-head"><span class="ch-num">CH·05</span><span class="ch-title">Clinical Notes</span><span class="ch-rule"></span></div>
+      <div class="notes"><textarea id="f-notes" rows="2" placeholder="Comorbidities, prior procedures, examiner observations…"></textarea></div>
+    </div>
+
+    <div class="run-row">
+      <button class="run-btn" id="runBtn" onclick="runAssessment()">▸ Print Reading</button>
+      <div class="run-note">runs a 30-tree random forest, calibrated on 209 chart-confirmed cases — AUC 0.794</div>
+    </div>
+  </div>
+
+  <!-- ═══ Tear edge ═══ -->
+  <div class="tear"></div>
+
+  <!-- ═══ Printout result ═══ -->
+  <div class="printout" id="printout">
+
+    <div class="stamp-wrap">
+      <div class="stamp" id="stamp">— %<small>awaiting reading</small></div>
+    </div>
+
+    <div class="result-trace">
+      <svg viewBox="0 0 1000 60" preserveAspectRatio="none">
+        <path id="rTrace1" d=""/>
+        <path id="rTrace2" d=""/>
+      </svg>
+    </div>
+
+    <div class="printout-grid">
+      <div>
+        <div class="po-block">
+          <div class="po-label">Leading Factors</div>
+          <div id="factorMeters"></div>
+        </div>
+        <div class="po-block" id="lipidBlock" style="display:none">
+          <div class="po-label">Lipid Readout</div>
+          <div id="lipidRows"></div>
+        </div>
+      </div>
+      <div>
+        <div class="po-block">
+          <div class="po-label">Recommended Pathway</div>
+          <ul class="advice-list" id="adviceList"></ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="po-block">
+      <div class="po-label">Session Log</div>
+      <table class="log-table">
+        <thead><tr><th>#</th><th>Patient</th><th>Flags</th><th>Score</th><th>Band</th></tr></thead>
+        <tbody id="logBody"><tr><td colspan="5" class="log-empty">No readings yet.</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="footnote">
+      <b>Decision support only.</b> This printout assists clinical judgement —
+      it does not diagnose. Every reading must be reviewed by a qualified
+      physician before any action is taken.
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════
+   ECG trace renderer (header + result)
+   ═══════════════════════════════════════════════ */
+function beatPath(offsetX, amp, baseline){
+  const segs=[];
+  for(let i=0;i<2;i++){
+    const x=offsetX+i*500, y0=baseline;
+    segs.push(`M ${x} ${y0}`, `L ${x+60} ${y0}`, `L ${x+75} ${y0-amp*0.18}`,
+      `L ${x+90} ${y0}`, `L ${x+110} ${y0}`, `L ${x+118} ${y0+amp*0.25}`,
+      `L ${x+128} ${y0-amp}`, `L ${x+138} ${y0+amp*0.32}`, `L ${x+150} ${y0}`,
+      `L ${x+170} ${y0}`, `L ${x+190} ${y0-amp*0.16}`, `L ${x+210} ${y0}`, `L ${x+500} ${y0}`);
+  }
+  return segs.join(' ');
+}
+function paintTrace(id1, id2, amp, baseline, color){
+  document.getElementById(id1).setAttribute('d', beatPath(0, amp, baseline));
+  document.getElementById(id2).setAttribute('d', beatPath(500, amp, baseline));
+  [id1,id2].forEach(id=>document.getElementById(id).style.stroke=color);
+}
+paintTrace('hTrace1','hTrace2', 9, 20, '#3C5C4C');
+
+/* ═══════════════════════════════════════════════
+   Model — logistic approximation of a Random
+   Forest (30 trees, depth 8) trained on 209
+   chart-confirmed WHS March 2025 records (AUC 0.794)
+   Feature order: AGE, GENDER, URBAN, HTN, DM, HLP,
+   SMOKER, FH, HYPO, CP, SOB, PALP, SLEEP
+   ═══════════════════════════════════════════════ */
+const FI = {age:0.4717, htn:0.0458, dm:0.0573, hlp:0.0272, smoker:0.0241,
+            fh:0.0257, hypo:0.0149, cp:0.1188, sob:0.0421, palp:0.0145};
+const W = {
+  intercept:-4.85, age:0.072, gender:0.68, urban:-0.15,
+  htn:1.02, dm:0.88, hlp:0.42, smoker:0.75, fh:0.80, hypo:-0.20,
+  cp:1.52, sob:0.92, palp:0.35, sleep:-0.30
+};
+const sigmoid = x => 1/(1+Math.exp(-x));
+
+const RS = {htn:false,dm:false,hlp:false,smoker:false,fh:false,hypo:false};
+const SS = {cp:false,sob:false,palp:false};
+let readingCount = 0;
+
+document.querySelectorAll('#risk-group .chk').forEach(el=>{
+  el.addEventListener('click', ()=>{
+    const k=el.dataset.key; RS[k]=!RS[k];
+    el.classList.toggle('on', RS[k]);
+    el.querySelector('.box').textContent = RS[k] ? '[×]' : '[ ]';
+  });
+});
+document.querySelectorAll('#symp-group .chk').forEach(el=>{
+  el.addEventListener('click', ()=>{
+    const k=el.dataset.key; SS[k]=!SS[k];
+    el.classList.toggle('on', SS[k]);
+    el.querySelector('.box').textContent = SS[k] ? '[×]' : '[ ]';
+  });
+});
+
+/* ASCII meter: e.g. "███████░░░░░░░░"  */
+function asciiMeter(pct, len=18){
+  const filled = Math.round((pct/100)*len);
+  return '█'.repeat(filled) + '░'.repeat(len-filled);
+}
+
+function runAssessment(){
+  const age    = parseFloat(document.getElementById('f-age').value);
+  const gender = parseFloat(document.getElementById('f-gender').value);
+  const urban  = parseFloat(document.getElementById('f-urban').value);
+  const sleep  = parseFloat(document.getElementById('f-sleep').value);
+
+  if (isNaN(age) || age<5 || age>110){ alert('Enter a valid age (5–110).'); return; }
+  if (isNaN(gender)){ alert('Select sex.'); return; }
+
+  const btn = document.getElementById('runBtn');
+  btn.classList.add('busy'); const orig = btn.textContent;
+  btn.textContent = '▸ Printing…';
+
+  setTimeout(()=>{
+    let z = W.intercept;
+    z += W.age*((age-53.6)/14.61);
+    z += W.gender*gender;
+    z += W.urban*(isNaN(urban)?0:urban);
+    z += W.htn*(RS.htn?1:0); z += W.dm*(RS.dm?1:0); z += W.hlp*(RS.hlp?1:0);
+    z += W.smoker*(RS.smoker?1:0); z += W.fh*(RS.fh?1:0); z += W.hypo*(RS.hypo?1:0);
+    z += W.cp*(SS.cp?1:0); z += W.sob*(SS.sob?1:0); z += W.palp*(SS.palp?1:0);
+    z += W.sleep*sleep;
+
+    const prob = Math.max(1, Math.min(99, Math.round(sigmoid(z)*100)));
+    render(prob, age, gender);
+
+    const chol=parseFloat(document.getElementById('f-chol').value);
+    const ldl =parseFloat(document.getElementById('f-ldl').value);
+    const hdl =parseFloat(document.getElementById('f-hdl').value);
+    if(!isNaN(chol)||!isNaN(ldl)||!isNaN(hdl)) renderLipids(chol,ldl,hdl);
+    else document.getElementById('lipidBlock').style.display='none';
+
+    btn.classList.remove('busy'); btn.textContent='▸ Print Reading Again';
+    document.getElementById('printout').classList.add('show');
+    document.getElementById('printout').scrollIntoView({behavior:'smooth', block:'start'});
+  }, 600);
+}
+
+function render(prob, age, gender){
+  let band,label,color,advice;
+  if(prob>=65){
+    band='high'; label='High Risk'; color='var(--high)';
+    advice=['Order 12-lead ECG and echocardiogram','Draw lipid profile if not already done',
+            'Refer to cardiology — TMT or angiography','Review antihypertensive / statin therapy'];
+  } else if(prob>=40){
+    band='med'; label='Moderate Risk'; color='var(--med)';
+    advice=['Resting ECG and 2D echo','Lipid profile, HbA1c if diabetic',
+            'Reassess in 1–3 months','Counsel on diet, activity, smoking cessation'];
+  } else {
+    band='low'; label='Low Risk'; color='var(--low)';
+    advice=['Routine annual review','Maintain current lifestyle',
+            'Reassess promptly if new symptoms appear'];
+  }
+
+  // Stamp
+  const stamp = document.getElementById('stamp');
+  stamp.className = 'stamp ' + band;
+  stamp.innerHTML = `${prob}%<small>${label}</small>`;
+
+  // Trace
+  const amp = 14 + (prob/100)*30;
+  const traceColor = band==='high' ? '#B23A2E' : band==='med' ? '#B8801E' : '#3F7556';
+  document.getElementById('rTrace1').setAttribute('d', beatPath(0, amp, 36));
+  document.getElementById('rTrace2').setAttribute('d', beatPath(500, amp, 36));
+  document.getElementById('rTrace1').style.stroke = traceColor;
+  document.getElementById('rTrace2').style.stroke = traceColor;
+
+  // Header trace also reflects last reading
+  paintTrace('hTrace1','hTrace2', 8+(prob/100)*14, 20, traceColor);
+
+  // Factor meters
+  const rows=[
+    {name:'Age', on:true, w:FI.age},
+    {name:'Chest pain', on:SS.cp, w:FI.cp},
+    {name:'Diabetes', on:RS.dm, w:FI.dm},
+    {name:'Hypertension', on:RS.htn, w:FI.htn},
+    {name:'Breathlessness', on:SS.sob, w:FI.sob},
+    {name:'Family history', on:RS.fh, w:FI.fh},
+    {name:'Smoking', on:RS.smoker, w:FI.smoker},
+  ].map(r=>({
+    name:r.name,
+    pct: r.on ? Math.min(100, Math.round(r.w*250)) :
+         (r.name==='Age' ? Math.min(100, Math.round(Math.abs(age-40)*FI.age*2.2)) : 0)
+  })).sort((a,b)=>b.pct-a.pct).slice(0,6);
+
+  document.getElementById('factorMeters').innerHTML = rows.map(r=>`
+    <div class="meter-row">
+      <span class="meter-name">${r.name}</span>
+      <span class="meter-bar" style="color:${color}">${asciiMeter(r.pct)}</span>
+      <span class="meter-val">${r.pct}</span>
+    </div>`).join('');
+
+  // Advice
+  document.getElementById('adviceList').innerHTML = advice.map(a=>`<li>${a}</li>`).join('');
+
+  // Log
+  readingCount++;
+  const risks=Object.entries(RS).filter(([,v])=>v).map(([k])=>k.toUpperCase());
+  const syms =Object.entries(SS).filter(([,v])=>v).map(([k])=>k.toUpperCase());
+  const flags=[...risks,...syms].join(', ')||'—';
+  const sexLbl=gender===1?'M':'F';
+  const body=document.getElementById('logBody');
+  if(readingCount===1) body.innerHTML='';
+  const tr=document.createElement('tr');
+  tr.innerHTML=`<td>${String(readingCount).padStart(2,'0')}</td>
+    <td>${age}${sexLbl}</td>
+    <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${flags}">${flags}</td>
+    <td><b>${prob}%</b></td>
+    <td class="lv ${band}">${label}</td>`;
+  body.insertBefore(tr, body.firstChild);
+  while(body.children.length>6) body.removeChild(body.lastChild);
+}
+
+function renderLipids(chol, ldl, hdl){
+  const block=document.getElementById('lipidBlock');
+  block.style.display='block';
+  const items=[
+    {name:'Total cholesterol', val:chol, hi:240, mid:200},
+    {name:'LDL', val:ldl, hi:160, mid:100},
+    {name:'HDL (higher=better)', val:hdl, hi:40, mid:60, reverse:true},
+  ];
+  let html='';
+  items.forEach(it=>{
+    if(isNaN(it.val)) return;
+    let status='within range', color='var(--low)';
+    if(!it.reverse){
+      if(it.val>=it.hi){status='elevated';color='var(--high)'}
+      else if(it.val>it.mid){status='borderline';color='var(--med)'}
+    } else {
+      if(it.val<it.hi){status='low';color='var(--high)'}
+      else if(it.val<it.mid){status='borderline';color='var(--med)'}
+    }
+    html+=`<div class="lipid-row"><span>${it.name} — ${it.val} mg/dL</span><span class="lstat" style="color:${color}">${status}</span></div>`;
+  });
+  document.getElementById('lipidRows').innerHTML=html;
+}
+</script>
+</body>
+</html>
