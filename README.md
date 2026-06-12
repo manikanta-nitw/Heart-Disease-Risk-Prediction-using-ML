@@ -17,6 +17,8 @@ A bedside-style risk assessor trained on **538 real patient records**
 from a March 2025 clinic dataset — runs entirely in the browser,
 no server, no upload, no tracking.
 
+### ▸ [Live Demo →](https://heartdiseaseriskprediction121.netlify.app/)
+
 </div>
 
 <br>
@@ -92,7 +94,9 @@ this cohort — consistent with established cardiovascular risk literature.
 
 ## ▸ Running it
 
-No build step, no dependencies, no installation.
+**Try it instantly →** [heartdiseaseriskprediction121.netlify.app](https://heartdiseaseriskprediction121.netlify.app/)
+
+No build step, no dependencies, no installation — or run it locally:
 
 ```bash
 # clone or download, then just open the file
